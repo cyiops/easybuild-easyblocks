@@ -586,8 +586,8 @@ class EB_CP2K(EasyBlock):
     def test_step(self):
         """Run regression test."""
 
-        if self.cfg['runtest']:
-
+#        if self.cfg['runtest']:
+	if 0:
             # change to root of build dir
             try:
                 os.chdir(self.builddir)

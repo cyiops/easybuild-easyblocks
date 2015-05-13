@@ -137,11 +137,17 @@ class EB_MATLAB(EasyBlock):
     def sanity_check_step(self):
         """Custom sanity check for MATLAB."""
 
-        custom_paths = {
-                        'files': ["bin/matlab", "bin/mcc", "bin/glnxa64/MATLAB", "bin/glnxa64/mcc",
-                                  "runtime/glnxa64/libmwmclmcrrt.so", "toolbox/local/classpath.txt"],
-                        'dirs': ["java/jar", "toolbox/compiler"],
-                       }
+#        custom_paths = {
+#                        'files': ["bin/matlab", "bin/mcc", "bin/glnxa64/MATLAB", "bin/glnxa64/mcc",
+#                                  "runtime/glnxa64/libmwmclmcrrt.so", "toolbox/local/classpath.txt"],
+#                        'dirs': ["java/jar", "toolbox/compiler"],
+#                       }
+
+	custom_paths = {
+			'files': ["bin/matlab", "bin/glnxa64/MATLAB", "toolbox/local/classpath.txt"],
+			'dirs': ["java/jar"],
+		       }
+
 
         super(EB_MATLAB, self).sanity_check_step(custom_paths=custom_paths)
 

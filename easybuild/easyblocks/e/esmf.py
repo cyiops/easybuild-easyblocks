@@ -50,7 +50,13 @@ class EB_ESMF(ConfigureMake):
         env.setvar('ESMF_INSTALL_LIBDIR', 'lib')
         env.setvar('ESMF_INSTALL_MODDIR', 'mod')
 
-        # specify compiler
+	#specify OS
+#        out, _ = run_cmd("uname", simple=False)
+#	env.setvar('ESMF_OS', '%s' % out)
+ 
+	env.setvar('ESMF_OS', 'Linux')
+      
+	# specify compiler
         comp_family = self.toolchain.comp_family()
         if comp_family in [toolchain.GCC]:
             compiler = 'gfortran'

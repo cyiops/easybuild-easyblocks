@@ -186,9 +186,6 @@ class EB_CP2K(EasyBlock):
 
         if get_software_root('ScaLAPACK'):
             options = self.configure_ScaLAPACK(options)
-	    
-	if get_software_root('CUDA'):
-	    options = self.configure_CUDA(options)
 
         # avoid group nesting
         options['LIBS'] = options['LIBS'].replace('-Wl,--start-group', '').replace('-Wl,--end-group', '')
@@ -547,20 +544,6 @@ class EB_CP2K(EasyBlock):
         options['LIBS'] += ' %s' % os.getenv('LIBSCALAPACK')
 
         return options
-
-    def configure_CUDA(self, options):
-	"""Configure for CUDA support"""
-
-	cuda = get_software_root('CUDA')
-
-	options['NVCC'] = '%s/bin/nvcc -gencode arch=compute_20,code=sm_20' % cuda
-
-	options['LIBS'] += ' -L%s -lcudart -lcublas -lcufft -lrt' % os.path.join(os.getenv('EBROOTCUDA'), 'lib')
-
-	options['DFLAGS'] += ' -D__ACC -D__DBCSR_ACC -D__HAS_NO_CUDA_SM30 '
-
-	return options
-
 
     def build_step(self):
         """Start the actual build

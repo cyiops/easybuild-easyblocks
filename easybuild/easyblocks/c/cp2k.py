@@ -96,6 +96,7 @@ class EB_CP2K(EasyBlock):
             'maxtasks': [3, ("Maximum number of CP2K instances run at "
                              "the same time during testing"), CUSTOM],
             'runtest': [True, "Build and run CP2K tests", CUSTOM],
+            'plumed': [False, "Enable PLUMED support", CUSTOM],
         }
         return EasyBlock.extra_options(extra_vars)
 
@@ -190,9 +191,17 @@ class EB_CP2K(EasyBlock):
 
         if os.getenv('LIBSCALAPACK', None) is not None:
             options = self.configure_ScaLAPACK(options)
-	    
+
+	#CUDA
 	if get_software_root('CUDA'):
 	    options = self.configure_CUDA(options)
+
+        # PLUMED
+        if self.cfg["plumed"]:
+            if not get_software_root('PLUMED'):
+                raise EasyBuildError("The PLUMED module needs to be loaded to build CP2K with PLUMED support")
+            options['LIBS'] += ' -lplumed'
+            options['DFLAGS'] += ' -D__PLUMED2'
 
         # avoid group nesting
         options['LIBS'] = options['LIBS'].replace('-Wl,--start-group', '').replace('-Wl,--end-group', '')
@@ -298,7 +307,7 @@ class EB_CP2K(EasyBlock):
                     self.log.debug("Determined MPI2 compatibility based on loaded MPI module: %s")
                 else:
                     self.log.debug("MPI-2 supporting MPI library %s not loaded.")
-            
+
         if not mpi2:
             raise EasyBuildError("CP2K needs MPI-2, no known MPI-2 supporting library loaded?")
 
@@ -374,7 +383,7 @@ class EB_CP2K(EasyBlock):
             # throw a warning, since CP2K without LibInt doesn't make much sense
             self.log.warning("LibInt module not loaded, so building without LibInt support")
 
-            
+
         libxc = get_software_root('libxc')
         if libxc:
             cur_libxc_version = get_software_version('libxc')
@@ -559,17 +568,13 @@ class EB_CP2K(EasyBlock):
 
     def configure_CUDA(self, options):
 	"""Configure for CUDA support"""
-
-	cuda = get_software_root('CUDA')
-
+	
+        cuda = get_software_root('CUDA')
 	options['NVCC'] = '%s/bin/nvcc -gencode arch=compute_20,code=sm_20' % cuda
-
 	options['LIBS'] += ' -L%s -lcudart -lcublas -lcufft -lrt' % os.path.join(os.getenv('EBROOTCUDA'), 'lib')
-
 	options['DFLAGS'] += ' -D__ACC -D__DBCSR_ACC -D__HAS_NO_CUDA_SM30 '
 
 	return options
-
 
     def build_step(self):
         """Start the actual build

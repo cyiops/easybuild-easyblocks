@@ -19,11 +19,12 @@ Ref: https://speakerdeck.com/ajdecon/introduction-to-the-cuda-toolkit-for-buildi
 @author: Kenneth Hoste (Ghent University)
 """
 import os
+from distutils.version import LooseVersion
 
 from easybuild.easyblocks.generic.binary import Binary
 from easybuild.tools.filetools import patch_perl_script_autoflush
 from easybuild.tools.run import run_cmd, run_cmd_qa
-from distutils.version import LooseVersion
+from easybuild.tools.systemtools import get_shared_lib_ext
 
 
 class EB_CUDA(Binary):
@@ -74,11 +75,13 @@ class EB_CUDA(Binary):
         # this is workaround for not being able to specify --nox11 to the Perl install scripts
         if 'DISPLAY' in os.environ:
             os.environ.pop('DISPLAY')
-
-        run_cmd_qa(cmd, qanda, std_qa=stdqa, no_qa=noqanda, log_all=True, simple=True)
+    
+        #overriding maxhits default value to 300 (300s wait for nothing to change in the output without seeing a known question)
+        run_cmd_qa(cmd, qanda, std_qa=stdqa, no_qa=noqanda, log_all=True, simple=True, maxhits=300)
 
     def sanity_check_step(self):
         """Custom sanity check for CUDA."""
+        shlib_ext = get_shared_lib_ext()
 
         chk_libdir = ["lib64"]
         
@@ -86,11 +89,14 @@ class EB_CUDA(Binary):
         if LooseVersion(self.version) < LooseVersion("6"):
             chk_libdir += ["lib"]
 
+        extra_files = []
+        if LooseVersion(self.version) < LooseVersion('7'):
+            extra_files.append('open64/bin/nvopencc')
+
         custom_paths = {
-            'files': ["bin/%s" % x for x in ["fatbinary", "nvcc", "nvlink", "ptxas"]] +
-                     ["%s/lib%s.so" % (x, y) for x in chk_libdir for y in ["cublas", "cudart", "cufft",
-                                                                           "curand", "cusparse"]] +
-                     ["open64/bin/nvopencc"],
+            'files': ["bin/%s" % x for x in ["fatbinary", "nvcc", "nvlink", "ptxas"]] + extra_files +
+                     ["%s/lib%s.%s" % (x, y, shlib_ext) for x in chk_libdir for y in ["cublas", "cudart", "cufft",
+                                                                                      "curand", "cusparse"]],
             'dirs': ["include"],
         }
 

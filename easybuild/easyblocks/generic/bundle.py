@@ -1,5 +1,5 @@
 ##
-# Copyright 2009-2016 Ghent University
+# Copyright 2009-2018 Ghent University
 #
 # This file is part of EasyBuild,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -8,7 +8,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -95,6 +95,14 @@ class Bundle(EasyBlock):
             else:
                 raise EasyBuildError("No sources specification for component %d v%d", comp_name, comp_version)
 
+            if 'source_urls' in comp_specs:
+                # add per-component source_urls to list of bundle source_urls, expanding templates
+                self.cfg.update('source_urls', cfg['source_urls'])
+
+            if 'checksums' in comp_specs:
+                # add per-component checksums for checksums
+                self.cfg.update('checksums', cfg['checksums'])
+
             self.comp_cfgs.append(cfg)
 
         self.cfg.enable_templating = True
@@ -119,7 +127,7 @@ class Bundle(EasyBlock):
         for idx, cfg in enumerate(self.comp_cfgs):
             easyblock = cfg.get('easyblock') or self.cfg['default_easyblock']
             if easyblock is None:
-                raise EasyBuildError("No easyblock specified for component %d v%d", cfg['name'], cfg['version'])
+                raise EasyBuildError("No easyblock specified for component %s v%s", cfg['name'], cfg['version'])
             elif easyblock == 'Bundle':
                 raise EasyBuildError("The '%s' easyblock can not be used to install components in a bundle", easyblock)
 
@@ -136,10 +144,11 @@ class Bundle(EasyBlock):
             comp.guess_start_dir()
 
             # run relevant steps
-            comp.patch_step()
-            comp.configure_step()
-            comp.build_step()
-            comp.install_step()
+            for step_name in ['patch', 'configure', 'build', 'install']:
+                if step_name in cfg['skipsteps']:
+                    comp.log.info("Skipping '%s' step for component %s v%s", step_name, cfg['name'], cfg['version'])
+                else:
+                    comp.run_step(step_name, [lambda x: getattr(x, '%s_step' % step_name)])
 
             # update environment to ensure stuff provided by former components can be picked up by latter components
             # once the installation is finalised, this is handled by the generated module
@@ -156,9 +165,13 @@ class Bundle(EasyBlock):
                             new_val = path
                         env.setvar(envvar, new_val)
 
-    def make_module_extra(self):
+    def make_module_extra(self, *args, **kwargs):
         """Set extra stuff in module file, e.g. $EBROOT*, $EBVERSION*, etc."""
-        return super(Bundle, self).make_module_extra(altroot=self.altroot, altversion=self.altversion)
+        if 'altroot' not in kwargs:
+            kwargs['altroot'] = self.altroot
+        if 'altversion' not in kwargs:
+            kwargs['altversion'] = self.altversion
+        return super(Bundle, self).make_module_extra(*args, **kwargs)
 
     def sanity_check_step(self, *args, **kwargs):
         """

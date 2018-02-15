@@ -1,5 +1,5 @@
 ##
-# Copyright 2009-2016 Ghent University
+# Copyright 2009-2018 Ghent University
 #
 # This file is part of EasyBuild,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -8,7 +8,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -109,9 +109,9 @@ class EB_OpenFOAM(EasyBlock):
         self.cfg['start_dir'] = os.path.join(self.installdir, self.openfoamdir)
         super(EB_OpenFOAM, self).patch_step(beginpath=self.cfg['start_dir'])
 
-    def prepare_step(self):
+    def prepare_step(self, *args, **kwargs):
         """Prepare for OpenFOAM install procedure."""
-        super(EB_OpenFOAM, self).prepare_step()
+        super(EB_OpenFOAM, self).prepare_step(*args, **kwargs)
 
         comp_fam = self.toolchain.comp_family()
         if comp_fam == toolchain.GCC:  # @UndefinedVariable
@@ -257,10 +257,15 @@ class EB_OpenFOAM(EasyBlock):
         """Build OpenFOAM using make after sourcing script to set environment."""
 
         precmd = "source %s" % os.path.join(self.builddir, self.openfoamdir, "etc", "bashrc")
+        if 'extend' not in self.name.lower() and LooseVersion(self.version) >= LooseVersion('4.0'):
+            cleancmd = "cd $WM_PROJECT_DIR && wcleanPlatform -all && cd -"
+        else:
+            cleancmd = "wcleanAll"
 
         # make directly in install directory
-        cmd_tmpl = "%(precmd)s && %(prebuildopts)s %(makecmd)s" % {
+        cmd_tmpl = "%(precmd)s && %(cleancmd)s && %(prebuildopts)s %(makecmd)s" % {
             'precmd': precmd,
+            'cleancmd': cleancmd,
             'prebuildopts': self.cfg['prebuildopts'],
             'makecmd': os.path.join(self.builddir, self.openfoamdir, '%s'),
         }
@@ -282,7 +287,11 @@ class EB_OpenFOAM(EasyBlock):
             ]
             run_cmd_qa(cmd_tmpl % 'Allwmake.firstInstall', qa, no_qa=noqa, log_all=True, simple=True)
         else:
-            run_cmd(cmd_tmpl % 'Allwmake', log_all=True, simple=True, log_output=True)
+            cmd = 'Allwmake'
+            if LooseVersion(self.version) >= LooseVersion('1606'):
+                # use Allwmake -log option if possible since this can be useful during builds, but also afterwards
+                cmd += ' -log'
+            run_cmd(cmd_tmpl % cmd, log_all=True, simple=True, log_output=True)
 
     def install_step(self):
         """Building was performed in install dir, so just fix permissions."""
@@ -326,12 +335,12 @@ class EB_OpenFOAM(EasyBlock):
 
         # some randomly selected binaries
         # if one of these is missing, it's very likely something went wrong
-        bins = [os.path.join(self.openfoamdir, "bin", x) for x in ["foamExec", "paraFoam"]] + \
+        bins = [os.path.join(self.openfoamdir, "bin", x) for x in ["paraFoam"]] + \
                [os.path.join(toolsdir, "buoyant%sSimpleFoam" % x) for x in ["", "Boussinesq"]] + \
                [os.path.join(toolsdir, "%sFoam" % x) for x in ["boundary", "engine", "sonic"]] + \
                [os.path.join(toolsdir, "surface%s" % x) for x in ["Add", "Find", "Smooth"]] + \
-               [os.path.join(toolsdir, x) for x in ["deformedGeom", "engineSwirl", "modifyMesh",
-                                                    "refineMesh", "wdot"]]
+               [os.path.join(toolsdir, x) for x in ['blockMesh', 'checkMesh', 'deformedGeom', 'engineSwirl',
+                                                    'modifyMesh', 'refineMesh']]
         # check for the Pstream and scotchDecomp libraries, there must be a dummy one and an mpi one
         if 'extend' in self.name.lower():
             libs = [os.path.join(libsdir, "libscotchDecomp.%s" % shlib_ext),

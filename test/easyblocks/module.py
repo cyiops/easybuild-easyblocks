@@ -1,5 +1,5 @@
 ##
-# Copyright 2015-2016 Ghent University
+# Copyright 2015-2018 Ghent University
 #
 # This file is part of EasyBuild,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -8,7 +8,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -263,6 +263,14 @@ def template_module_only_test(self, easyblock, name='foo', version='1.3.2', extr
         self.assertTrue(os.path.exists(modfile) or os.path.exists(luamodfile),
                         "Module file %s or %s was generated" % (modfile, luamodfile))
 
+        if os.path.exists(modfile):
+            modtxt = read_file(modfile)
+        else:
+            modtxt = read_file(luamodfile)
+
+        none_regex = re.compile('None')
+        self.assertFalse(none_regex.search(modtxt), "None not found in module file: %s" % modtxt)
+
         # cleanup
         app.close_log()
         os.remove(app.logfile)
@@ -307,6 +315,10 @@ def suite():
         if os.path.basename(easyblock) == 'systemcompiler.py':
             # use GCC as name when testing SystemCompiler easyblock
             exec("def innertest(self): template_module_only_test(self, '%s', name='GCC', version='system')" % easyblock)
+        elif os.path.basename(easyblock) == 'systemmpi.py':
+            # use OpenMPI as name when testing SystemMPI easyblock
+            exec("def innertest(self): template_module_only_test(self, '%s', name='OpenMPI', version='system')" %
+                 easyblock)
         elif os.path.basename(easyblock) == 'craytoolchain.py':
             # make sure that a (known) PrgEnv is included as a dependency
             extra_txt = 'dependencies = [("PrgEnv-gnu/1.2.3", EXTERNAL_MODULE)]'

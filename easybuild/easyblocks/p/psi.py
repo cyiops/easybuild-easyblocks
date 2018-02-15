@@ -1,5 +1,5 @@
 ##
-# Copyright 2013-2016 Ghent University
+# Copyright 2013-2018 Ghent University
 #
 # This file is part of EasyBuild,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -8,7 +8,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -144,7 +144,7 @@ class EB_PSI(CMakeMake):
             if self.toolchain.options.get('usempi', None):
                 self.cfg.update('configopts', " -DENABLE_MPI=ON")
 
-            if get_software_root('impi'):
+            if get_software_root('imkl'):
                 self.cfg.update('configopts', " -DENABLE_CSR=ON -DBLAS_TYPE=MKL")
 
             if self.name == 'PSI4':

@@ -1,5 +1,5 @@
 ##
-# Copyright 2009-2016 Ghent University
+# Copyright 2009-2018 Ghent University
 #
 # This file is part of EasyBuild,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -8,7 +8,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -74,7 +74,7 @@ class EB_ALADIN(EasyBlock):
         if 'LIBRARY_PATH' in os.environ:
             self.log.debug("Unsetting $LIBRARY_PATH (was: %s)" % os.environ['LIBRARY_PATH'])
             self.orig_library_path = os.environ.pop('LIBRARY_PATH')
-        
+
         # build auxiliary libraries
         auxlibs_dir = None
 
@@ -131,7 +131,7 @@ class EB_ALADIN(EasyBlock):
                  }
 
             run_cmd_qa("./build_gmkpack", qa)
- 
+
             os.chdir(cwd)
 
             paths = os.getenv('PATH').split(':')
@@ -241,7 +241,7 @@ class EB_ALADIN(EasyBlock):
 
         stdqa = OrderedDict([
             (r'Confirm library .* is .*', 'y'),  # this one needs to be tried first!
-            (r'.*fortran 90 compiler name .*\s*:\n\(suggestions\s*: .*\)', os.getenv('F90')),
+            (r'.*fortran 90 compiler name .*\s*:\n\(suggestions\s*: .*\)', f90_seq),
             (r'.*fortran 90 compiler interfaced with .*\s*:\n\(suggestions\s*: .*\)', f90_seq),
             (r'Please type the ABSOLUTE name of .*library.*, or ignore\s*[:]*\s*[\n]*.*', ''),
             (r'Please .* to save this draft configuration file :\n.*', '%s.x' % self.conf_file),

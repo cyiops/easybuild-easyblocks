@@ -1,5 +1,5 @@
 ##
-# Copyright 2009-2016 Ghent University
+# Copyright 2009-2018 Ghent University
 #
 # This file is part of EasyBuild,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -8,7 +8,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -45,9 +45,19 @@ import easybuild.tools.environment as env
 from easybuild.easyblocks.generic.configuremake import ConfigureMake
 from easybuild.framework.easyconfig import CUSTOM
 from easybuild.tools.build_log import EasyBuildError
+from easybuild.tools.filetools import symlink, write_file
 from easybuild.tools.modules import get_software_root
 from easybuild.tools.run import run_cmd
-from easybuild.tools.systemtools import check_os_dependency, get_os_name, get_os_type, get_shared_lib_ext, get_platform_name
+from easybuild.tools.systemtools import check_os_dependency, get_os_name, get_os_type, get_platform_name
+from easybuild.tools.systemtools import get_shared_lib_ext
+
+
+COMP_CMD_SYMLINKS = {
+    'cc': 'gcc',
+    'c++': 'g++',
+    'f77': 'gfortran',
+    'f95': 'gfortran',
+}
 
 
 class EB_GCC(ConfigureMake):
@@ -60,6 +70,7 @@ class EB_GCC(ConfigureMake):
     def extra_options():
         extra_vars = {
             'languages': [[], "List of languages to build GCC for (--enable-languages)", CUSTOM],
+            'withlibiberty': [False, "Enable installing of libiberty", CUSTOM],
             'withlto': [True, "Enable LTO support", CUSTOM],
             'withcloog': [False, "Build GCC with CLooG support", CUSTOM],
             'withppl': [False, "Build GCC with PPL support", CUSTOM],
@@ -67,6 +78,7 @@ class EB_GCC(ConfigureMake):
             'pplwatchdog': [False, "Enable PPL watchdog", CUSTOM],
             'clooguseisl': [False, "Use ISL with CLooG or not", CUSTOM],
             'multilib': [False, "Build multilib gcc (both i386 and x86_64)", CUSTOM],
+            'prefer_lib_subdir': [False, "Configure GCC to prefer 'lib' subdirs over 'lib64' & co when linking", CUSTOM],
         }
         return ConfigureMake.extra_options(extra_vars)
 
@@ -239,6 +251,10 @@ class EB_GCC(ConfigureMake):
         if self.cfg['languages']:
             self.configopts += " --enable-languages=%s" % ','.join(self.cfg['languages'])
 
+        # enable building of libiberty, if desired
+        if self.cfg['withlibiberty']:
+            self.configopts += " --enable-install-libiberty"
+
         # enable link-time-optimization (LTO) support, if desired
         if self.cfg['withlto']:
             self.configopts += " --enable-lto"
@@ -286,6 +302,16 @@ class EB_GCC(ConfigureMake):
             # set prefixes
             self.log.info("Performing regular GCC build...")
             configopts += " --prefix=%(p)s --with-local-prefix=%(p)s" % {'p': self.installdir}
+
+        # prioritize lib over lib{64,32,x32} for all architectures by overriding default MULTILIB_OSDIRNAMES config
+        # only do this when multilib is not enabled
+        if self.cfg['prefer_lib_subdir'] and not self.cfg['multilib']:
+            cfgfile = 'gcc/config/i386/t-linux64'
+            multilib_osdirnames = "MULTILIB_OSDIRNAMES = m64=../lib:../lib64 m32=../lib:../lib32 mx32=../lib:../libx32"
+            self.log.info("Patching MULTILIB_OSDIRNAMES in %s with '%s'", cfgfile, multilib_osdirnames)
+            write_file(cfgfile, multilib_osdirnames, append=True)
+        elif self.cfg['multilib']:
+            self.log.info("Not patching MULTILIB_OSDIRNAMES since use of --enable-multilib is enabled")
 
         # III) create obj dir to build in, and change to it
         #     GCC doesn't like to be built in the source dir
@@ -490,6 +516,24 @@ class EB_GCC(ConfigureMake):
 
     # make install is just standard install_step, nothing special there
 
+    def post_install_step(self, *args, **kwargs):
+        """
+        Post-processing after installation: add symlinks for cc, c++, f77, f95
+        """
+        super(EB_GCC, self).post_install_step(*args, **kwargs)
+
+        bindir = os.path.join(self.installdir, 'bin')
+        for key in COMP_CMD_SYMLINKS:
+            src = COMP_CMD_SYMLINKS[key]
+            target = os.path.join(bindir, key)
+            if os.path.exists(target):
+                self.log.info("'%s' already exists in %s, not replacing it with symlink to '%s'",
+                              key, bindir, src)
+            elif os.path.exists(os.path.join(bindir, src)):
+                symlink(src, target, use_abspath_source=False)
+            else:
+                raise EasyBuildError("Can't link '%s' to non-existing location %s", target, os.path.join(bindir, src))
+
     def sanity_check_step(self):
         """
         Custom sanity check for GCC
@@ -553,8 +597,10 @@ class EB_GCC(ConfigureMake):
         libdirs = ['libexec', 'lib']
         libexec_files = [tuple([os.path.join(libdir, common_infix, x) for libdir in libdirs]) for x in libexec_files]
 
+        old_cmds = [os.path.join('bin', x) for x in COMP_CMD_SYMLINKS.keys()]
+
         custom_paths = {
-            'files': bin_files + lib_files + libexec_files,
+            'files': bin_files + lib_files + libexec_files + old_cmds,
             'dirs': dirs,
         }
 

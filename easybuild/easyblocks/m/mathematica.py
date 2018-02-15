@@ -8,7 +8,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -73,7 +73,7 @@ class EB_Mathematica(Binary):
         no_qa = [
             "Now installing.*\n\n.*\[.*\].*",
         ]
-        run_cmd_qa(cmd, qa, no_qa=no_qa, log_all=True, simple=True)
+        run_cmd_qa(cmd, qa, no_qa=no_qa, log_all=True, simple=True, maxhits=200)
 
         # add license server configuration file
         # some relevant documentation at http://reference.wolfram.com/mathematica/tutorial/ConfigurationFiles.html

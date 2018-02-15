@@ -1,6 +1,6 @@
 ##
-# Copyright 2015-2016 Bart Oldeman
-# Copyright 2016-2016 Forschungszentrum Juelich
+# Copyright 2015-2018 Bart Oldeman
+# Copyright 2016-2018 Forschungszentrum Juelich
 #
 # This file is triple-licensed under GPLv2 (see below), MIT, and
 # BSD three-clause licenses.
@@ -12,7 +12,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -38,8 +38,9 @@ import re
 import sys
 
 import easybuild.tools.environment as env
-from easybuild.framework.easyblock import EasyBlock
+from easybuild.easyblocks.generic.packedbinary import PackedBinary
 from easybuild.framework.easyconfig import CUSTOM
+from easybuild.framework.easyconfig.types import ensure_iterable_license_specs
 from easybuild.tools.build_log import EasyBuildError
 from easybuild.tools.filetools import find_flexlm_license, write_file
 from easybuild.tools.run import run_cmd
@@ -60,12 +61,12 @@ default($if($LIBRARY_PATH,-L$replace($LIBRARY_PATH,":", -L)));
 append LDLIBARGS=$library_path;
 
 # also include the location where libm & co live on Debian-based systems
-# cfr. https://github.com/hpcugent/easybuild-easyblocks/pull/919
+# cfr. https://github.com/easybuilders/easybuild-easyblocks/pull/919
 append LDLIBARGS=-L/usr/lib/x86_64-linux-gnu;
 """
 
 
-class EB_PGI(EasyBlock):
+class EB_PGI(PackedBinary):
     """
     Support for installing the PGI compilers
     """
@@ -78,7 +79,7 @@ class EB_PGI(EasyBlock):
             'install_managed': [True, "Install OpenACC Unified Memory Evaluation package", CUSTOM],
             'install_nvidia': [True, "Install CUDA Toolkit Components", CUSTOM],
         }
-        return EasyBlock.extra_options(extra_vars)
+        return PackedBinary.extra_options(extra_vars)
 
     def __init__(self, *args, **kwargs):
         """Easyblock constructor, define custom class variables specific to PGI."""
@@ -87,15 +88,16 @@ class EB_PGI(EasyBlock):
         self.license_file = 'UNKNOWN'
         self.license_env_var = 'UNKNOWN' # Probably not really necessary for PGI
 
-        self.install_subdir = os.path.join('linux86-64', self.version)
+        self.pgi_install_subdir = os.path.join('linux86-64', self.version)
 
     def configure_step(self):
         """
-        Handle license file. 
+        Handle license file.
         """
         default_lic_env_var = 'PGROUPD_LICENSE_FILE'
+        license_specs = ensure_iterable_license_specs(self.cfg['license_file'])
         lic_specs, self.license_env_var = find_flexlm_license(custom_env_vars=[default_lic_env_var],
-                                                              lic_specs=[self.cfg['license_file']])
+                                                              lic_specs=license_specs)
 
         if lic_specs:
             if self.license_env_var is None:
@@ -110,13 +112,6 @@ class EB_PGI(EasyBlock):
         else:
             raise EasyBuildError("No viable license specifications found; specify 'license_file' or " +
                                  "define $PGROUPD_LICENSE_FILE or $LM_LICENSE_FILE")
-
-
-    def build_step(self):
-        """
-        Dummy build method: nothing to build
-        """
-        pass
 
     def install_step(self):
         """Install by running install command."""
@@ -134,7 +129,7 @@ class EB_PGI(EasyBlock):
         run_cmd(cmd, log_all=True, simple=True)
 
         # make sure localrc uses GCC in PATH, not always the system GCC, and does not use a system g77 but gfortran
-        install_abs_subdir = os.path.join(self.installdir, self.install_subdir)
+        install_abs_subdir = os.path.join(self.installdir, self.pgi_install_subdir)
         filename = os.path.join(install_abs_subdir, "bin", "makelocalrc")
         for line in fileinput.input(filename, inplace='1', backup='.orig'):
             line = re.sub(r"^PATH=/", r"#PATH=/", line)
@@ -142,7 +137,7 @@ class EB_PGI(EasyBlock):
 
         cmd = "%s -x %s -g77 /" % (filename, install_abs_subdir)
         run_cmd(cmd, log_all=True, simple=True)
-        
+
         # If an OS libnuma is NOT found, makelocalrc creates symbolic links to libpgnuma.so
         # If we use the EB libnuma, delete those symbolic links to ensure they are not used
         if get_software_root("numactl"):
@@ -152,14 +147,14 @@ class EB_PGI(EasyBlock):
                     os.remove(path)
 
         # install (or update) siterc file to make PGI consider $LIBRARY_PATH
-        siterc_path = os.path.join(self.installdir, self.install_subdir, 'bin', 'siterc')
+        siterc_path = os.path.join(self.installdir, self.pgi_install_subdir, 'bin', 'siterc')
         write_file(siterc_path, SITERC_LIBRARY_PATH, append=True)
         self.log.info("Appended instructions to pick up $LIBRARY_PATH to siterc file at %s: %s",
                       siterc_path, SITERC_LIBRARY_PATH)
 
     def sanity_check_step(self):
         """Custom sanity check for PGI"""
-        prefix = self.install_subdir
+        prefix = self.pgi_install_subdir
         custom_paths = {
             'files': [os.path.join(prefix, 'bin', x) for x in ['pgcc', 'pgc++', 'pgf77', 'pgfortran', 'siterc']],
             'dirs': [os.path.join(prefix, 'bin'), os.path.join(prefix, 'lib'),
@@ -171,10 +166,10 @@ class EB_PGI(EasyBlock):
         """Prefix subdirectories in PGI install dir considered for environment variables defined in module file."""
         dirs = super(EB_PGI, self).make_module_req_guess()
         for key in dirs:
-            dirs[key] = [os.path.join(self.install_subdir, d) for d in dirs[key]]
+            dirs[key] = [os.path.join(self.pgi_install_subdir, d) for d in dirs[key]]
 
         # $CPATH should not be defined in module for PGI, it causes problems
-        # cfr. https://github.com/hpcugent/easybuild-easyblocks/issues/830
+        # cfr. https://github.com/easybuilders/easybuild-easyblocks/issues/830
         if 'CPATH' in dirs:
             self.log.info("Removing $CPATH entry: %s", dirs['CPATH'])
             del dirs['CPATH']

@@ -1,5 +1,5 @@
 ##
-# Copyright 2009-2016 Ghent University
+# Copyright 2009-2018 Ghent University
 #
 # This file is part of EasyBuild,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -8,7 +8,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@ from easybuild.easyblocks.generic.cmakemake import CMakeMake
 from easybuild.framework.easyconfig import CUSTOM
 from easybuild.tools.build_log import EasyBuildError
 from easybuild.tools.modules import get_software_root
+from easybuild.tools.systemtools import get_shared_lib_ext
 
 
 class EB_Trilinos(CMakeMake):
@@ -238,8 +239,14 @@ class EB_Trilinos(CMakeMake):
             libs.remove('Kokkos')
             libs.append('kokkoscore')
 
+        # Get the library extension
+        if self.cfg['shared_libs']:
+            lib_ext = get_shared_lib_ext()
+        else:
+            lib_ext = "a"
+
         custom_paths = {
-            'files': [os.path.join('lib', 'lib%s.a' % x.lower()) for x in libs],
+            'files': [os.path.join('lib', 'lib%s.%s' % (x.lower(), lib_ext)) for x in libs],
             'dirs': ['bin', 'include']
         }
 

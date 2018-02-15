@@ -8,7 +8,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -97,7 +97,11 @@ class EB_ESMF(ConfigureMake):
             if netcdfcxx:
                 netcdf_libs = ["-L%s/lib" % netcdfcxx] + netcdf_libs + ["-lnetcdf_c++"]
             else:
-                netcdf_libs.append('-lnetcdf_c++')
+                netcdfcxx = get_software_root('netCDF-C++4')
+                if netcdfcxx:
+                    netcdf_libs = ["-L%s/lib" % netcdfcxx] + netcdf_libs + ["-lnetcdf_c++4"]
+                else:
+                    netcdf_libs.append('-lnetcdf_c++')
 
             env.setvar('ESMF_NETCDF_LIBS', ' '.join(netcdf_libs))
 

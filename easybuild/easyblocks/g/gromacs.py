@@ -8,7 +8,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -30,13 +30,13 @@ EasyBuild support for building and installing GROMACS, implemented as an easyblo
 @author: Benjamin Roberts (The University of Auckland)
 @author: Luca Marsella (CSCS)
 @author: Guilherme Peretti-Pezzi (CSCS)
+@author: Oliver Stueker (Compute Canada/ACENET)
 """
 import glob
 import os
 import re
 import shutil
 from distutils.version import LooseVersion
-from vsc.utils.missing import any
 
 import easybuild.tools.environment as env
 import easybuild.tools.toolchain as toolchain
@@ -44,8 +44,9 @@ from easybuild.easyblocks.generic.configuremake import ConfigureMake
 from easybuild.easyblocks.generic.cmakemake import CMakeMake
 from easybuild.framework.easyconfig import CUSTOM
 from easybuild.tools.build_log import EasyBuildError
+from easybuild.tools.config import build_option
 from easybuild.tools.filetools import download_file, extract_file, which
-from easybuild.tools.modules import get_software_libdir, get_software_root
+from easybuild.tools.modules import get_software_libdir, get_software_root, get_software_version
 from easybuild.tools.run import run_cmd
 from easybuild.tools.systemtools import get_platform_name , get_shared_lib_ext
 
@@ -70,8 +71,60 @@ class EB_GROMACS(CMakeMake):
         self.lib_subdir = ''
         self.pre_env = ''
 
+    def get_gromacs_arch(self):
+        """Determine value of GMX_SIMD CMake flag based on optarch string.
+
+        Refs:
+        [0] http://manual.gromacs.org/documentation/2016.3/install-guide/index.html#typical-installation
+        [1] http://manual.gromacs.org/documentation/2016.3/install-guide/index.html#simd-support
+        [2] http://www.gromacs.org/Documentation/Acceleration_and_parallelization
+        """
+        # default: fall back on autodetection
+        res = None
+
+        optarch = build_option('optarch') or ''
+        # take into account that optarch value is a dictionary if it is specified by compiler family
+        if isinstance(optarch, dict):
+            comp_fam = self.toolchain.comp_family()
+            optarch = optarch.get(comp_fam, '')
+        optarch = optarch.upper()
+
+        if 'AVX512' in optarch and LooseVersion(self.version) >= LooseVersion('2016'):
+            res = 'AVX_512'
+        elif 'AVX2' in optarch and LooseVersion(self.version) >= LooseVersion('5.0'):
+            res = 'AVX2_256'
+        elif 'AVX' in optarch:
+            res = 'AVX_256'
+        elif 'SSE3' in optarch or 'SSE2' in optarch or 'MARCH=NOCONA' in optarch:
+            # Gromacs doesn't have any GMX_SIMD=SSE3 but only SSE2 and SSE4.1 [1].
+            # According to [2] the performance difference between SSE2 and SSE4.1 is minor on x86
+            # and SSE4.1 is not supported by AMD Magny-Cours[1].
+            res = 'SSE2'
+
+        if res:
+            self.log.info("Target architecture based on optarch configuration option ('%s'): %s", optarch, res)
+        else:
+            self.log.info("No target architecture specified based on optarch configuration option ('%s')", optarch)
+
+        return res
+
     def configure_step(self):
         """Custom configuration procedure for GROMACS: set configure options for configure or cmake."""
+
+        # check whether PLUMED is loaded as a dependency
+        plumed_root = get_software_root('PLUMED')
+        if plumed_root:
+            # Need to check if PLUMED has an engine for this version
+            engine = 'gromacs-%s' % self.version
+
+            (out, _) = run_cmd("plumed-patch -l", log_all=True, simple=False)
+            if not re.search(engine, out):
+                raise EasyBuildError("There is no support in PLUMED version %s for GROMACS %s: %s",
+                                     get_software_version('PLUMED'), self.version, out)
+
+            # PLUMED patching must be done at different stages depending on
+            # version of GROMACS. Just prepare first part of cmd here
+            plumed_cmd = "plumed-patch -p -e %s" % engine
 
         if LooseVersion(self.version) < LooseVersion('4.6'):
             self.log.info("Using configure script for configuring GROMACS build.")
@@ -104,7 +157,26 @@ class EB_GROMACS(CMakeMake):
             # actually run configure via ancestor (not direct parent)
             ConfigureMake.configure_step(self)
 
+            # Now patch GROMACS for PLUMED between configure and build
+            if plumed_root:
+                run_cmd(plumed_cmd, log_all=True, simple=True)
+
         else:
+            # Now patch GROMACS for PLUMED before cmake
+            if plumed_root:
+                if LooseVersion(self.version) >= LooseVersion('5.1'):
+                    # Use shared or static patch depending on
+                    # setting of self.toolchain.options.get('dynamic')
+                    # and adapt cmake flags accordingly as per instructions
+                    # from "plumed patch -i"
+                    if self.toolchain.options.get('dynamic', False):
+                        mode = 'shared'
+                    else:
+                        mode = 'static'
+                    plumed_cmd = plumed_cmd + ' -m %s' % mode
+
+                run_cmd(plumed_cmd, log_all=True, simple=True)
+
             # build a release build
             self.cfg.update('configopts', "-DCMAKE_BUILD_TYPE=Release")
 
@@ -113,6 +185,8 @@ class EB_GROMACS(CMakeMake):
                 self.cfg.update('configopts', "-DGMX_PREFER_STATIC_LIBS=OFF")
             else:
                 self.cfg.update('configopts', "-DGMX_PREFER_STATIC_LIBS=ON")
+                if plumed_root:
+                    self.cfg.update('configopts', "-DBUILD_SHARED_LIBS=OFF")
 
             if self.cfg['double_precision']:
                 self.cfg.update('configopts', "-DGMX_DOUBLE=ON")
@@ -122,6 +196,14 @@ class EB_GROMACS(CMakeMake):
 
             # disable GUI tools
             self.cfg.update('configopts', "-DGMX_X11=OFF")
+
+            # convince to build for an older architecture than present on the build node by setting GMX_SIMD CMake flag
+            gmx_simd = self.get_gromacs_arch()
+            if gmx_simd:
+                if LooseVersion(self.version) < LooseVersion('5.0'):
+                    self.cfg.update('configopts', "-DGMX_CPU_ACCELERATION=%s" % gmx_simd)
+                else:
+                    self.cfg.update('configopts', "-DGMX_SIMD=%s" % gmx_simd)
 
             # set regression test path
             prefix = 'regressiontests'

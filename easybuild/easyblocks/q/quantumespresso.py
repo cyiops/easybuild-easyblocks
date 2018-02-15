@@ -1,5 +1,5 @@
 ##
-# Copyright 2009-2016 Ghent University
+# Copyright 2009-2018 Ghent University
 #
 # This file is part of EasyBuild,
 # originally created by the HPC team of Ghent University (http://ugent.be/hpc/en),
@@ -8,7 +8,7 @@
 # Flemish Research Foundation (FWO) (http://www.fwo.be/en)
 # and the Department of Economy, Science and Innovation (EWI) (http://www.ewi-vlaanderen.be/en).
 #
-# http://github.com/hpcugent/easybuild
+# https://github.com/easybuilders/easybuild
 #
 # EasyBuild is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -39,6 +39,7 @@ import easybuild.tools.toolchain as toolchain
 from easybuild.easyblocks.generic.configuremake import ConfigureMake
 from easybuild.framework.easyconfig import CUSTOM
 from easybuild.tools.build_log import EasyBuildError
+from easybuild.tools.filetools import apply_regex_substitutions
 from easybuild.tools.modules import get_software_root
 
 
@@ -60,7 +61,10 @@ class EB_QuantumESPRESSO(ConfigureMake):
 
         self.build_in_installdir = True
 
-        self.install_subdir = "espresso-%s" % self.version
+        if LooseVersion(self.version) >= LooseVersion("6"):
+            self.install_subdir = "qe-%s" % self.version
+        else:
+            self.install_subdir = "espresso-%s" % self.version
 
     def patch_step(self):
         """Patch files from build dir (not start dir)."""
@@ -149,10 +153,24 @@ class EB_QuantumESPRESSO(ConfigureMake):
         repls.append(('LAPACK_LIBS_SWITCH', 'external', False))
         repls.append(('LD_LIBS', os.getenv('LIBS'), False))
 
+        # check for external FoX
+        if get_software_root('FoX'):
+            self.log.debug("Found FoX external module, disabling libfox target in Makefile")
+            regex_subs = [
+                (r"(libfox: touch-dummy)\n.*",
+                 r"\1\n\techo 'libfox: external module used' #"),
+            ]
+            apply_regex_substitutions('Makefile', regex_subs)
+
         self.log.debug("List of replacements to perform: %s" % repls)
 
+        if LooseVersion(self.version) >= LooseVersion("6"):
+            make_ext = '.inc'
+        else:
+            make_ext = '.sys'
+
         # patch make.sys file
-        fn = os.path.join(self.cfg['start_dir'], 'make.sys')
+        fn = os.path.join(self.cfg['start_dir'], 'make' + make_ext)
         try:
             for line in fileinput.input(fn, inplace=1, backup='.orig.eb'):
                 for (k, v, keep) in repls:
@@ -178,7 +196,7 @@ class EB_QuantumESPRESSO(ConfigureMake):
 
         # patch default make.sys for wannier
         if LooseVersion(self.version) >= LooseVersion("5"):
-            fn = os.path.join(self.cfg['start_dir'], 'install', 'make_wannier90.sys')
+            fn = os.path.join(self.cfg['start_dir'], 'install', 'make_wannier90' + make_ext)
         else:
             fn = os.path.join(self.cfg['start_dir'], 'plugins', 'install', 'make_wannier90.sys')
         try:
@@ -227,13 +245,16 @@ class EB_QuantumESPRESSO(ConfigureMake):
 
         # move non-espresso directories to where they're expected and create symlinks
         try:
-            dirnames = [d for d in os.listdir(self.builddir) if not d.startswith('espresso')]
-            targetdir = os.path.join(self.builddir, "espresso-%s" % self.version)
+            dirnames = [d for d in os.listdir(self.builddir) if not d == self.install_subdir]
+            targetdir = os.path.join(self.builddir, self.install_subdir)
             for dirname in dirnames:
                 shutil.move(os.path.join(self.builddir, dirname), os.path.join(targetdir, dirname))
                 self.log.info("Moved %s into %s" % (dirname, targetdir))
 
                 dirname_head = dirname.split('-')[0]
+                # Handle the case where the directory is preceded by 'qe-'
+                if dirname_head == 'qe':
+                    dirname_head = dirname.split('-')[1]
                 linkname = None
                 if dirname_head == 'sax':
                     linkname = 'SaX'
@@ -275,7 +296,9 @@ class EB_QuantumESPRESSO(ConfigureMake):
                 bins.extend(["neb.x", "path_interpolation.x"])
 
         if 'ph' in self.cfg['buildopts'] or 'all' in self.cfg['buildopts']:
-            bins.extend(["d3.x", "dynmat.x", "lambda.x", "matdyn.x", "ph.x", "phcg.x", "q2r.x"])
+            bins.extend(["dynmat.x", "lambda.x", "matdyn.x", "ph.x", "phcg.x", "q2r.x"])
+            if LooseVersion(self.version) < LooseVersion("6"):
+                bins.extend(["d3.x"])
             if LooseVersion(self.version) > LooseVersion("5"):
                 bins.extend(["fqha.x", "q2qstar.x"])
 
